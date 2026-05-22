@@ -1,16 +1,29 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import sys
-import os
-
-# This helps Python find your 'ai' folder
 from ai_engine import ask_laguna
 
 app = FastAPI()
 
+# --- CORS Security Clearance ---
+# Tell the backend to trust requests coming from the Angular frontend
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows POST, GET, OPTIONS, etc.
+    allow_headers=["*"],  # Allows all headers to pass through
+)
+# -------------------------------
+
 class ChatRequest(BaseModel):
     prompt: str
-    context: str = ""
 
 @app.get("/")
 def health_check():
@@ -18,5 +31,5 @@ def health_check():
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest):
-    answer = ask_laguna(request.prompt, request.context)
+    answer = ask_laguna(request.prompt)
     return {"answer": answer}

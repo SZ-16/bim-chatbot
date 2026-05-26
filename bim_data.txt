@@ -1,0 +1,4 @@
+PROJECT ALPHA - BIM EXECUTION PLAN
+The Level of Development (LOD) for all structural columns must be LOD 350 before the final review.
+The primary BIM software for this project is Autodesk Revit 2024.
+All clash detection reports must be exported as BCF (BIM Collaboration Format) files and uploaded to the central server every Friday by 5:00 PM.

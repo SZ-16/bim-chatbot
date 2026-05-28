@@ -1,0 +1,22 @@
+export type Message = {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+  fileNames?: string[];
+  replyTo?: string;
+  citations?: { text: string; page: number }[]; 
+};
+
+export type Chat = {
+  id: number;
+  title: string;
+  messages: Message[];
+};
+
+export type Screen = "login" | "register" | "chat";
+export type SettingsTab = "profile" | "accessibility" | "appearance";
+export type Theme = "dark" | "light";
+export type BubbleStyle = "rounded" | "square";
+export type MessageDensity = "compact" | "comfortable" | "spacious";
+export type ChatWidth = "narrow" | "default" | "wide";
+export type SidebarWidth = "compact" | "default";

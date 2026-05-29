@@ -1,18 +1,60 @@
 import os
 import psycopg2
 import random
+import PyPDF2
+import docx
 
 
-def chunk_text_file(filepath: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+def extract_text_from_file(filepath: str) -> str:
     """
-    Reads a text file and splits it into smaller chunks with overlap.
+    Detects the file extension and extracts raw text from PDF, DOCX, or TXT.
+    """
+    _, file_extension = os.path.splitext(filepath)
+    file_extension = file_extension.lower()
+    extracted_text = ""
+
+    try:
+        if file_extension == '.txt':
+            with open(filepath, 'r', encoding='utf-8') as file:
+                extracted_text = file.read()
+
+        elif file_extension == '.pdf':
+            with open(filepath, 'rb') as file:
+                reader = PyPDF2.PdfReader(file)
+                for page in reader.pages:
+                    # Extract text and add a space to avoid words squishing together
+                    page_text = page.extract_text()
+                    if page_text:
+                        extracted_text += page_text + " "
+
+        elif file_extension == '.docx':
+            doc = docx.Document(filepath)
+            for paragraph in doc.paragraphs:
+                extracted_text += paragraph.text + "\n"
+
+        else:
+            print(f"Error: Unsupported file type '{file_extension}'")
+
+    except Exception as e:
+        print(f"Error reading {filepath}: {e}")
+
+    return extracted_text
+
+
+def chunk_document(filepath: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+    """
+    Extracts text from any supported file and splits it into smaller chunks with overlap.
     """
     if not os.path.exists(filepath):
         print(f"Error: Could not find the file at {filepath}")
         return []
 
-    with open(filepath, 'r', encoding='utf-8') as file:
-        text = file.read()
+    # Use our new smart extraction function
+    text = extract_text_from_file(filepath)
+
+    if not text.strip():
+        print("Warning: No text could be extracted from the file.")
+        return []
 
     chunks = []
     start = 0
@@ -34,9 +76,10 @@ def generate_mock_embedding(dimensions: int = 1536) -> list[float]:
 
 # --- INGESTION SCRIPT ---
 if __name__ == "__main__":
-    # 1. Chunk the file
-    file_path = "../bim_data.txt"  # Change this if your file is in a different folder
-    document_chunks = chunk_text_file(file_path)
+    # 1. Extract and Chunk the file
+    # You can change this to point to a .pdf or .docx file!
+    file_path = "../lab3.pdf" # Test pdf this can be changed
+    document_chunks = chunk_document(file_path)
 
     if not document_chunks:
         print("Stopping: No chunks generated.")

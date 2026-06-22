@@ -83,18 +83,18 @@ export default function SettingsModal(props: SettingsModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-      <div className={`${t.modalBg} border ${t.border} rounded-2xl w-full max-w-2xl shadow-2xl flex overflow-hidden`} style={{ height: "520px" }}>
+      <div className={`${t.modalBg} border ${t.border} rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden max-h-[90vh] md:max-h-none`} style={{ height: "auto", minHeight: "520px" }}>
 
         {/* Left tab rail */}
-        <div className={`${t.modalSidebar} border-r ${t.border} flex flex-col py-4 w-44 shrink-0`}>
-          <p className={`text-xs font-semibold uppercase tracking-widest ${t.textMuted} px-4 mb-3`}>Settings</p>
+        <div className={`${t.modalSidebar} border-b md:border-b-0 md:border-r ${t.border} flex flex-row md:flex-col overflow-x-auto md:w-44 shrink-0`}>
+          <p className={`hidden md:block text-xs font-semibold uppercase tracking-widest ${t.textMuted} px-4 py-3 mb-1`}>Settings</p>
           {SETTINGS_TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setSettingsTab(tab.id)}
-              className={`flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+              className={`flex items-center gap-2 md:gap-3 px-4 py-3 md:py-2.5 text-left transition-colors whitespace-nowrap ${
                 settingsTab === tab.id
-                  ? `${accent.text} bg-white/5 border-r-2 ${accent.border}`
+                  ? `${accent.text} bg-white/5 border-b-2 md:border-b-0 md:border-r-2 ${accent.border}`
                   : `${t.textMuted} hover:${t.textPrimary}`
               }`}
             >
@@ -102,12 +102,20 @@ export default function SettingsModal(props: SettingsModalProps) {
               <span className="font-medium">{tab.label}</span>
             </button>
           ))}
-          <div className="flex-1" />
-          <button onClick={() => setSettingsOpen(false)} className={`mx-4 mt-4 text-xs ${t.textMuted} hover:text-red-400 transition-colors text-left`}>✕ Close</button>
+          <div className="hidden md:block flex-1" />
+          <button onClick={() => setSettingsOpen(false)} className={`hidden md:block mx-4 mt-4 text-xs ${t.textMuted} hover:text-red-400 transition-colors text-left pb-4`}>✕ Close</button>
         </div>
 
         {/* Right content */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        <div className="flex-1 overflow-y-auto px-4 md:px-6 py-5 space-y-5 relative">
+
+          {/* Mobile-only Close Button */}
+          <button
+            onClick={() => setSettingsOpen(false)}
+            className={`md:hidden absolute top-4 right-4 ${t.textMuted} hover:text-red-400 transition-colors text-xl font-bold`}
+          >
+            ✕
+          </button>
 
           {/* Profile Tab */}
           {settingsTab === "profile" && (

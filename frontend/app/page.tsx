@@ -252,7 +252,13 @@ export default function Home() {
         theme={theme} highContrast={highContrast}
         fontSize={fontSize} accentIndex={accentIndex} sidebarWidth={sidebarWidth}
       />
-
+      {/* Mobile Backdrop Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
       {/* Main Chat Area */}
       <ChatArea
         activeChat={activeChat} handleNewChat={handleNewChat}

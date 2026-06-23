@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
 
 from auth import verify_token
 from forge.aps_client import (
@@ -8,6 +8,7 @@ from forge.aps_client import (
     get_translation_status,
     upload_and_translate,
 )
+from limiter import limiter
 
 router = APIRouter(prefix="/forge", tags=["forge"])
 
@@ -18,7 +19,8 @@ FORGE_EXTENSIONS = {
 
 
 @router.get("/token")
-def forge_viewer_token(user: str = Depends(verify_token)):
+@limiter.limit("30/minute")
+def forge_viewer_token(request: Request, user: str = Depends(verify_token)):
     try:
         token = get_access_token()
         return {"access_token": token, "expires_in": 3600}
@@ -29,7 +31,12 @@ def forge_viewer_token(user: str = Depends(verify_token)):
 
 
 @router.post("/models/upload")
-async def upload_model(file: UploadFile = File(...), user: str = Depends(verify_token)):
+@limiter.limit("5/minute")
+async def upload_model(
+    request: Request,
+    file: UploadFile = File(...),
+    user: str = Depends(verify_token),
+):
     if not file.filename:
         raise HTTPException(status_code=400, detail="File name is required.")
 
@@ -53,7 +60,8 @@ async def upload_model(file: UploadFile = File(...), user: str = Depends(verify_
 
 
 @router.get("/models/{urn}/status")
-def model_translation_status(urn: str, user: str = Depends(verify_token)):
+@limiter.limit("60/minute")
+def model_translation_status(request: Request, urn: str, user: str = Depends(verify_token)):
     try:
         return get_translation_status(urn)
     except ForgeConfigError as exc:

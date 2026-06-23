@@ -7,3 +7,4 @@ openai
 psycopg2-binary
 python-multipart
 pydantic
+slowapi

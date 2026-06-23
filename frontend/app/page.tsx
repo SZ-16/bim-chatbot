@@ -37,26 +37,46 @@ export default function Home() {
 
   // Appearance State
   const [accentIndex, setAccentIndex] = useState(0);
-  const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle>("rounded");
-  const [messageDensity, setMessageDensity] = useState<MessageDensity>("comfortable");
-  const [chatWidth, setChatWidth] = useState<ChatWidth>("default");
+  const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle>("rounded" as any);
+  const [messageDensity, setMessageDensity] = useState<MessageDensity>("comfortable" as any);
+  const [chatWidth, setChatWidth] = useState<ChatWidth>("default" as any);
   const [sidebarWidth, setSidebarWidth] = useState<SidebarWidth>("default");
 
-  // Check auth on mount
+  // Auto-Login & Token Fetcher for Development
   useEffect(() => {
-    const user = localStorage.getItem("chat_username");
-    const email = localStorage.getItem("chat_email");
-    if (!user || !email) {
-      router.push("/login");
+    const fetchToken = async () => {
+      try {
+        // Automatically hit your Python login endpoint
+        const res = await fetch("http://127.0.0.1:8000/login", { method: "POST" });
+        if (res.ok) {
+          const data = await res.json();
+          // Save the VIP token directly into the browser's brain
+          localStorage.setItem("bim_token", data.access_token);
+
+          // Set some dummy user data so the UI stops redirecting you
+          localStorage.setItem("chat_username", "DevUser");
+          localStorage.setItem("chat_email", "dev@bim.com");
+          setLoggedInUser("DevUser");
+          setLoggedInEmail("dev@bim.com");
+        }
+      } catch (error) {
+        console.error("Failed to auto-fetch token:", error);
+      }
+    };
+
+    // If the browser doesn't have a token, go get one automatically!
+    if (!localStorage.getItem("bim_token")) {
+      fetchToken();
     } else {
-      setLoggedInUser(user);
-      setLoggedInEmail(email);
+      setLoggedInUser(localStorage.getItem("chat_username") || "DevUser");
+      setLoggedInEmail(localStorage.getItem("chat_email") || "dev@bim.com");
     }
-  }, [router]);
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("chat_username");
     localStorage.removeItem("chat_email");
+    localStorage.removeItem("bim_token");
     router.push("/login");
   };
 
@@ -86,47 +106,106 @@ export default function Home() {
     setPendingFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if ((!input.trim() && pendingFiles.length === 0) || activeChatId === null) return;
-    
+
+    const promptToSend = input || "Uploaded files for analysis.";
     const userMessage: Message = {
       role: "user",
-      content: input || "Uploaded files for analysis.",
+      content: promptToSend,
       fileNames: pendingFiles.length > 0 ? pendingFiles : undefined,
       timestamp: getTime(),
       replyTo: replyTo ?? undefined,
     };
-    
+
     setChats((prev) =>
       prev.map((chat) =>
         chat.id === activeChatId
           ? {
               ...chat,
-              title: chat.messages.length === 0 ? (input || pendingFiles[0] || "New Chat").slice(0, 30) : chat.title,
+              title: chat.messages.length === 0 ? promptToSend.slice(0, 30) : chat.title,
               messages: [...chat.messages, userMessage],
             }
           : chat
       )
     );
-    
-    setInput(""); setPendingFiles([]); setReplyTo(null); setIsTyping(true);
-    
-    // Simulate AI response (Replace this with WebSocket/RAG integration later)
-    setTimeout(() => {
-      const botMessage: Message = {
-        role: "assistant",
-        content: pendingFiles.length > 0
-          ? `I received ${pendingFiles.length} file(s): ${pendingFiles.join(", ")}. ${input ? `You asked: "${input}". ` : ""}I will analyse them and answer any questions you have.`
-          : "Hello! I am the BIM Chatbot. How can I help you?",
-        timestamp: getTime(),
-      };
+
+    setInput("");
+    setPendingFiles([]);
+    setReplyTo(null);
+    setIsTyping(true);
+
+    // Create an empty bot message that we will stream text into
+    const botMessage: Message = {
+      role: "assistant",
+      content: "",
+      timestamp: getTime(),
+    };
+
+    setChats((prev) =>
+      prev.map((chat) =>
+        chat.id === activeChatId ? { ...chat, messages: [...chat.messages, botMessage] } : chat
+      )
+    );
+
+    try {
+      const token = localStorage.getItem("bim_token");
+
+      if (!token) {
+        alert("Please log in to use the AI!");
+        setIsTyping(false);
+        return;
+      }
+
+      const response = await fetch("http://127.0.0.1:8000/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ prompt: promptToSend })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+      let aiText = "";
+
+      while (!done && reader) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+        const chunkValue = decoder.decode(value, { stream: true });
+        aiText += chunkValue;
+
+        setChats((prev) =>
+          prev.map((chat) => {
+            if (chat.id === activeChatId) {
+              const newMessages = [...chat.messages];
+              newMessages[newMessages.length - 1].content = aiText;
+              return { ...chat, messages: newMessages };
+            }
+            return chat;
+          })
+        );
+      }
+    } catch (error) {
       setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === activeChatId ? { ...chat, messages: [...chat.messages, botMessage] } : chat
-        )
+        prev.map((chat) => {
+          if (chat.id === activeChatId) {
+            const newMessages = [...chat.messages];
+            newMessages[newMessages.length - 1].content = "Connection Error.";
+            return { ...chat, messages: newMessages };
+          }
+          return chat;
+        })
       );
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   const activeChat = chats.find((c) => c.id === activeChatId);
@@ -173,7 +252,13 @@ export default function Home() {
         theme={theme} highContrast={highContrast}
         fontSize={fontSize} accentIndex={accentIndex} sidebarWidth={sidebarWidth}
       />
-
+      {/* Mobile Backdrop Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
       {/* Main Chat Area */}
       <ChatArea
         activeChat={activeChat} handleNewChat={handleNewChat}

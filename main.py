@@ -2,14 +2,11 @@ import os
 import jwt
 from datetime import datetime, timedelta, timezone
 from PyPDF2 import PdfReader
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 # --- Security Configuration ---
 JWT_SECRET = "super-secret-bim-key-do-not-share"
@@ -18,10 +15,7 @@ ALGORITHM = "HS256"
 # This tells FastAPI where the frontend should go to get a token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 origins = [
     "http://localhost:3000",
@@ -63,8 +57,8 @@ def health_check():
 
 
 @app.post("/login")
-@limiter.limit("10/minute")
-def login_placeholder(request: Request):
+def login_placeholder():
+
     expiration_time = datetime.now(timezone.utc) + timedelta(hours=24)
 
     # JWT
@@ -75,19 +69,14 @@ def login_placeholder(request: Request):
 
 
 @app.post("/chat")
-@limiter.limit("20/minute")
-async def chat_endpoint(
-    request: Request,
-    chat_request: ChatRequest,
-    user: str = Depends(verify_token),
-):
-    if not chat_request.prompt.strip():
+async def chat_endpoint(request: ChatRequest, user: str = Depends(verify_token)):
+    if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
     from ai_engine import stream_laguna
 
     return StreamingResponse(
-        stream_laguna(chat_request.prompt),
+        stream_laguna(request.prompt),
         media_type="text/event-stream"
     )
 

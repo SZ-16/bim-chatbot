@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+PyJWT
+PyPDF2
+python-dotenv
+openai
+psycopg2-binary
+python-multipart
+pydantic
+httpx

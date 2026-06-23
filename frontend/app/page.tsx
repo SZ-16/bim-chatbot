@@ -5,6 +5,8 @@ import Sidebar from "@/components/layout/Sidebar";
 import ChatArea from "@/components/chat/ChatArea";
 import SettingsModal from "@/components/settings/SettingsModal";
 import { Chat, SettingsTab, Theme, BubbleStyle, MessageDensity, ChatWidth, SidebarWidth, Message } from "@/types";
+import { API_URL, authHeaders } from "@/utils/api";
+import { ForgeModel, isForgeFile, uploadForgeModel } from "@/utils/forge";
 
 const getTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -19,7 +21,7 @@ export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [input, setInput] = useState("");
-  const [pendingFiles, setPendingFiles] = useState<string[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
 
@@ -47,7 +49,7 @@ export default function Home() {
     const fetchToken = async () => {
       try {
         // Automatically hit your Python login endpoint
-        const res = await fetch("http://127.0.0.1:8000/login", { method: "POST" });
+        const res = await fetch(`${API_URL}/login`, { method: "POST" });
         if (res.ok) {
           const data = await res.json();
           // Save the VIP token directly into the browser's brain
@@ -98,7 +100,7 @@ export default function Home() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || activeChatId === null) return;
-    setPendingFiles((prev) => [...prev, ...files.map((f) => f.name)]);
+    setPendingFiles((prev) => [...prev, ...files]);
     e.target.value = "";
   };
 
@@ -109,11 +111,34 @@ export default function Home() {
   const handleSend = async () => {
     if ((!input.trim() && pendingFiles.length === 0) || activeChatId === null) return;
 
-    const promptToSend = input || "Uploaded files for analysis.";
+    const token = localStorage.getItem("bim_token");
+    if (!token) {
+      alert("Please log in to use the AI!");
+      return;
+    }
+
+    const forgeFiles = pendingFiles.filter((file) => isForgeFile(file.name));
+    const otherFiles = pendingFiles.filter((file) => !isForgeFile(file.name));
+    const filesToUpload = [...pendingFiles];
+    const promptToSend = input || (forgeFiles.length > 0 ? "Uploaded BIM model for viewing." : "Uploaded files for analysis.");
+
+    let forgeModels: ForgeModel[] = [];
+    if (forgeFiles.length > 0) {
+      setIsTyping(true);
+      try {
+        forgeModels = await Promise.all(forgeFiles.map((file) => uploadForgeModel(file)));
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Failed to upload BIM model to Forge.");
+        setIsTyping(false);
+        return;
+      }
+    }
+
     const userMessage: Message = {
       role: "user",
       content: promptToSend,
-      fileNames: pendingFiles.length > 0 ? pendingFiles : undefined,
+      fileNames: filesToUpload.map((file) => file.name),
+      forgeModels: forgeModels.length > 0 ? forgeModels : undefined,
       timestamp: getTime(),
       replyTo: replyTo ?? undefined,
     };
@@ -133,6 +158,12 @@ export default function Home() {
     setInput("");
     setPendingFiles([]);
     setReplyTo(null);
+
+    if (forgeFiles.length > 0 && otherFiles.length === 0 && !input.trim()) {
+      setIsTyping(false);
+      return;
+    }
+
     setIsTyping(true);
 
     // Create an empty bot message that we will stream text into
@@ -149,21 +180,13 @@ export default function Home() {
     );
 
     try {
-      const token = localStorage.getItem("bim_token");
-
-      if (!token) {
-        alert("Please log in to use the AI!");
-        setIsTyping(false);
-        return;
-      }
-
-      const response = await fetch("http://127.0.0.1:8000/chat", {
+      const response = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ prompt: promptToSend })
+        body: JSON.stringify({ prompt: promptToSend }),
       });
 
       if (!response.ok) {

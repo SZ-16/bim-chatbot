@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useEffect } from "react";
 import { ACCENT_COLORS, DENSITY_MAP, CHAT_WIDTH_MAP } from "@/utils/theme";
+import ForgeModelCard from "@/components/forge/ForgeModelCard";
 import { Chat, Theme, BubbleStyle, MessageDensity, ChatWidth } from "@/types";
 
 type ChatAreaProps = {
@@ -10,7 +11,7 @@ type ChatAreaProps = {
   // Input & Messaging State
   input: string;
   setInput: (val: string) => void;
-  pendingFiles: string[];
+  pendingFiles: File[];
   replyTo: string | null;
   setReplyTo: (val: string | null) => void;
   isTyping: boolean;
@@ -128,6 +129,14 @@ export default function ChatArea(props: ChatAreaProps) {
                       ))}
                     </div>
                   )}
+
+                  {msg.forgeModels && msg.forgeModels.length > 0 && (
+                    <div className="mb-2 space-y-3">
+                      {msg.forgeModels.map((model) => (
+                        <ForgeModelCard key={model.urn} model={model} />
+                      ))}
+                    </div>
+                  )}
                   
                   {msg.content}
                 </div>
@@ -169,9 +178,9 @@ export default function ChatArea(props: ChatAreaProps) {
             {/* Pending Files Banner */}
             {pendingFiles.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {pendingFiles.map((name, i) => (
+                {pendingFiles.map((file, i) => (
                   <div key={i} className={`flex items-center gap-2 ${t.inputBg} border ${t.borderMid} rounded-xl px-3 py-1 ${t.textSecondary}`}>
-                    <span>📎 {name}</span>
+                    <span>📎 {file.name}</span>
                     <button onClick={() => removeFile(i)} className={`${t.textMuted} hover:text-red-400`} style={{ fontSize: `${Math.max(fontSize - 2, 10)}px` }}>✕</button>
                   </div>
                 ))}

@@ -1,12 +1,14 @@
 "use client";
 import { useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { ACCENT_COLORS, DENSITY_MAP, CHAT_WIDTH_MAP } from "@/utils/theme";
 import { Chat, Theme, BubbleStyle, MessageDensity, ChatWidth } from "@/types";
 
 type ChatAreaProps = {
   activeChat: Chat | undefined;
   handleNewChat: () => void;
-  
+
   // Input & Messaging State
   input: string;
   setInput: (val: string) => void;
@@ -14,13 +16,13 @@ type ChatAreaProps = {
   replyTo: string | null;
   setReplyTo: (val: string | null) => void;
   isTyping: boolean;
-  
+
   // Handlers
   handleSend: () => void;
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   removeFile: (index: number) => void;
   handleReply: (content: string) => void;
-  
+
   // Layout & UI State
   sidebarOpen: boolean;
   setSidebarOpen: (val: boolean | ((prev: boolean) => boolean)) => void;
@@ -72,7 +74,7 @@ export default function ChatArea(props: ChatAreaProps) {
 
   return (
     <div className="flex-1 flex flex-col items-center min-w-0">
-      
+
       {/* Top Bar */}
       <div className={`w-full flex items-center px-4 py-3 border-b ${t.border}`}>
         <button onClick={() => setSidebarOpen((prev) => !prev)} className={`${t.textMuted} hover:${accent.text} transition-colors text-xl mr-3`}>
@@ -105,21 +107,21 @@ export default function ChatArea(props: ChatAreaProps) {
             {activeChat.messages.length === 0 && !isTyping && (
               <p className={`text-center ${t.textMuted} mt-20`}>Ask me anything about your BIM documents.</p>
             )}
-            
+
             {/* Messages Array */}
             {activeChat.messages.map((msg, i) => (
               <div key={i} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                
+
                 {/* Reply Context */}
                 {msg.replyTo && (
                   <div className={`max-w-lg ${density.px} py-2 rounded-xl ${t.textMuted} ${t.inputBg} border-l-2 ${accent.border} mb-1 truncate ${msg.role === "user" ? "self-end" : "self-start"}`} style={{ fontSize: `${Math.max(fontSize - 2, 10)}px` }}>
                     ↩ {msg.replyTo}
                   </div>
                 )}
-                
+
                 {/* Message Bubble */}
-                <div className={`max-w-lg ${density.px} ${density.py} ${bubbleRadius} ${msg.role === "user" ? `${accent.bg} text-stone-950 font-medium` : `${t.bubbleBot} ${t.textBubbleBot}`}`}>
-                  
+                <div className={`max-w-lg ${density.px} ${density.py} ${bubbleRadius} overflow-x-auto ${msg.role === "user" ? `${accent.bg} text-stone-950 font-medium` : `${t.bubbleBot} ${t.textBubbleBot}`}`}>
+
                   {/* File Attachments */}
                   {msg.fileNames && msg.fileNames.length > 0 && (
                     <div className="mb-2 space-y-1">
@@ -128,8 +130,19 @@ export default function ChatArea(props: ChatAreaProps) {
                       ))}
                     </div>
                   )}
-                  
-                  {msg.content}
+
+                  {/* MAGIC FIX: Translate Markdown to real UI! */}
+{/* MAGIC FIX: Translate Markdown to real UI! */}
+                  {msg.role === "assistant" ? (
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                      <ReactMarkdown remarkPlugins={[remarkGfm as any]}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    msg.content
+                  )}
+
                 </div>
                 
                 {/* Timestamp & Actions */}

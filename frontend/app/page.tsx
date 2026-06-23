@@ -10,6 +10,7 @@ const getTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minut
 
 export default function Home() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
 
   // Auth State
   const [loggedInUser, setLoggedInUser] = useState("");
@@ -22,6 +23,10 @@ export default function Home() {
   const [pendingFiles, setPendingFiles] = useState<string[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
+
+  // File Upload Tracker State
+  const [uploadedFilename, setUploadedFilename] = useState<string>("bim_data.txt");
+  const [isUploading, setIsUploading] = useState<boolean>(false);
 
   // Layout & Settings State
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -42,18 +47,15 @@ export default function Home() {
   const [chatWidth, setChatWidth] = useState<ChatWidth>("default" as any);
   const [sidebarWidth, setSidebarWidth] = useState<SidebarWidth>("default");
 
-  // Auto-Login & Token Fetcher for Development
   useEffect(() => {
+    setMounted(true);
+
     const fetchToken = async () => {
       try {
-        // Automatically hit your Python login endpoint
         const res = await fetch("http://127.0.0.1:8000/login", { method: "POST" });
         if (res.ok) {
           const data = await res.json();
-          // Save the VIP token directly into the browser's brain
-          localStorage.setItem("bim_token", data.access_token);
-
-          // Set some dummy user data so the UI stops redirecting you
+          localStorage.setItem("bim_token", data.access_token || "dummy_token");
           localStorage.setItem("chat_username", "DevUser");
           localStorage.setItem("chat_email", "dev@bim.com");
           setLoggedInUser("DevUser");
@@ -64,9 +66,8 @@ export default function Home() {
       }
     };
 
-    // If the browser doesn't have a token, go get one automatically!
     if (!localStorage.getItem("bim_token")) {
-      fetchToken();
+      void fetchToken();
     } else {
       setLoggedInUser(localStorage.getItem("chat_username") || "DevUser");
       setLoggedInEmail(localStorage.getItem("chat_email") || "dev@bim.com");
@@ -95,15 +96,44 @@ export default function Home() {
     setReplyTo(content);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Uploads file directly to FastAPI
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || activeChatId === null) return;
-    setPendingFiles((prev) => [...prev, ...files.map((f) => f.name)]);
-    e.target.value = "";
+
+    const file = files[0];
+
+    setPendingFiles((prev) => [...prev, file.name]);
+    setIsUploading(true);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("http://127.0.0.1:8000/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error("Failed to upload document");
+
+      const data = await response.json();
+      setUploadedFilename(data.filename);
+      console.log(`Successfully uploaded to backend: ${data.filename}`);
+
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert("Upload failed. Make sure it's a PDF or TXT.");
+      setPendingFiles((prev) => prev.filter(name => name !== file.name));
+    } finally {
+      setIsUploading(false);
+      e.target.value = "";
+    }
   };
 
   const removeFile = (index: number) => {
     setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+    setUploadedFilename("bim_data.txt"); // Revert to default
   };
 
   const handleSend = async () => {
@@ -135,10 +165,9 @@ export default function Home() {
     setReplyTo(null);
     setIsTyping(true);
 
-    // Create an empty bot message that we will stream text into
     const botMessage: Message = {
       role: "assistant",
-      content: "",
+      content: "...",
       timestamp: getTime(),
     };
 
@@ -157,41 +186,47 @@ export default function Home() {
         return;
       }
 
+      // THE FIX: Grab the existing chat history from the state
+      const activeChatData = chats.find(c => c.id === activeChatId);
+      const currentHistory = activeChatData ? activeChatData.messages
+        .filter(msg => msg.content !== "..." && msg.content !== "")
+        .map(msg => ({
+          role: msg.role,
+          content: msg.content
+        })) : [];
+
       const response = await fetch("http://127.0.0.1:8000/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ prompt: promptToSend })
+        // THE FIX: Send the history AND the chat_id to Python
+        body: JSON.stringify({
+          message: promptToSend,
+          filename: uploadedFilename,
+          history: currentHistory,
+          chat_id: activeChatId
+        })
       });
 
       if (!response.ok) {
         throw new Error(`API Error: ${response.status}`);
       }
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let done = false;
-      let aiText = "";
+      const data = await response.json();
 
-      while (!done && reader) {
-        const { value, done: doneReading } = await reader.read();
-        done = doneReading;
-        const chunkValue = decoder.decode(value, { stream: true });
-        aiText += chunkValue;
+      setChats((prev) =>
+        prev.map((chat) => {
+          if (chat.id === activeChatId) {
+            const newMessages = [...chat.messages];
+            newMessages[newMessages.length - 1].content = data.response;
+            return { ...chat, messages: newMessages };
+          }
+          return chat;
+        })
+      );
 
-        setChats((prev) =>
-          prev.map((chat) => {
-            if (chat.id === activeChatId) {
-              const newMessages = [...chat.messages];
-              newMessages[newMessages.length - 1].content = aiText;
-              return { ...chat, messages: newMessages };
-            }
-            return chat;
-          })
-        );
-      }
     } catch (error) {
       setChats((prev) =>
         prev.map((chat) => {
@@ -210,18 +245,20 @@ export default function Home() {
 
   const activeChat = chats.find((c) => c.id === activeChatId);
 
-  // Global Theme Classes
   const t = {
     pageBg: theme === "dark" ? (highContrast ? "bg-black" : "bg-stone-950") : (highContrast ? "bg-white" : "bg-stone-100"),
     textPrimary: theme === "dark" ? (highContrast ? "text-white" : "text-stone-100") : (highContrast ? "text-black" : "text-stone-900"),
   };
 
+  if (!mounted) {
+    return <div className="flex h-screen items-center justify-center bg-stone-950 text-white">Loading interface...</div>;
+  }
+
   return (
-    <div 
+    <div
       className={`flex h-screen overflow-hidden ${t.pageBg} ${t.textPrimary}`}
       style={{ fontSize: `${fontSize}px`, fontFamily, lineHeight: lineSpacing }}
     >
-      {/* Settings Modal */}
       {settingsOpen && (
         <SettingsModal
           setSettingsOpen={setSettingsOpen}
@@ -241,7 +278,6 @@ export default function Home() {
         />
       )}
 
-      {/* Sidebar Navigation */}
       <Sidebar
         sidebarOpen={sidebarOpen}
         chats={chats}
@@ -252,6 +288,7 @@ export default function Home() {
         theme={theme} highContrast={highContrast}
         fontSize={fontSize} accentIndex={accentIndex} sidebarWidth={sidebarWidth}
       />
+<<<<<<< Updated upstream
       {/* Mobile Backdrop Overlay */}
       {sidebarOpen && (
         <div
@@ -260,12 +297,15 @@ export default function Home() {
         />
       )}
       {/* Main Chat Area */}
+=======
+
+>>>>>>> Stashed changes
       <ChatArea
         activeChat={activeChat} handleNewChat={handleNewChat}
         input={input} setInput={setInput}
         pendingFiles={pendingFiles}
         replyTo={replyTo} setReplyTo={setReplyTo}
-        isTyping={isTyping}
+        isTyping={isTyping || isUploading}
         handleSend={handleSend} handleFileUpload={handleFileUpload}
         removeFile={removeFile} handleReply={handleReply}
         sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}

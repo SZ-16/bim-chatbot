@@ -167,13 +167,3 @@ Authenticate by calling `POST /login` to receive a bearer token, then send it as
 - Emit a `<chart>{...}</chart>` JSON block when the user explicitly asks for a chart or graph (supports `bar` and `pie` types), which the frontend renders with Recharts.
 - Emit a `<document>...</document>` block when the user asks for a report or export, which the frontend renders/exports as a formatted document.
 
-## Known Limitations / TODO
-
-- `main.py` references a chat-completion streaming endpoint and some imports (`UploadFile`, `File`, `os`, `shutil`, `Base`, `engine`) that aren't fully wired up yet — review and complete this file before deploying.
-- `/login` is a placeholder with no real credential check.
-- `database/ingest_data.py` uses mock embeddings instead of real ones.
-- JWT secret in `auth.py` is hardcoded — move it to an environment variable before production use.
-
-## License
-
-No license file is currently included in this repository. Add a `LICENSE` file to clarify usage rights.

@@ -10,50 +10,41 @@ const getTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minut
 
 export default function Home() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
 
-  // Auth State
   const [loggedInUser, setLoggedInUser] = useState("");
   const [loggedInEmail, setLoggedInEmail] = useState("");
-
-  // Chat State
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<string[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [uploadedFilename, setUploadedFilename] = useState<string>("bim_data.txt");
+  const [isUploading, setIsUploading] = useState<boolean>(false);
 
-  // Layout & Settings State
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("profile");
-
-  // Accessibility State
   const [fontSize, setFontSize] = useState(14);
   const [fontFamily, setFontFamily] = useState("Inter, sans-serif");
   const [theme, setTheme] = useState<Theme>("dark");
   const [highContrast, setHighContrast] = useState(false);
   const [lineSpacing, setLineSpacing] = useState(1.5);
-
-  // Appearance State
   const [accentIndex, setAccentIndex] = useState(0);
   const [bubbleStyle, setBubbleStyle] = useState<BubbleStyle>("rounded" as any);
   const [messageDensity, setMessageDensity] = useState<MessageDensity>("comfortable" as any);
   const [chatWidth, setChatWidth] = useState<ChatWidth>("default" as any);
   const [sidebarWidth, setSidebarWidth] = useState<SidebarWidth>("default");
 
-  // Auto-Login & Token Fetcher for Development
   useEffect(() => {
+    setMounted(true);
     const fetchToken = async () => {
       try {
-        // Automatically hit your Python login endpoint
         const res = await fetch("http://127.0.0.1:8000/login", { method: "POST" });
         if (res.ok) {
           const data = await res.json();
-          // Save the VIP token directly into the browser's brain
-          localStorage.setItem("bim_token", data.access_token);
-
-          // Set some dummy user data so the UI stops redirecting you
+          localStorage.setItem("bim_token", data.access_token || "dummy_token");
           localStorage.setItem("chat_username", "DevUser");
           localStorage.setItem("chat_email", "dev@bim.com");
           setLoggedInUser("DevUser");
@@ -64,9 +55,8 @@ export default function Home() {
       }
     };
 
-    // If the browser doesn't have a token, go get one automatically!
     if (!localStorage.getItem("bim_token")) {
-      fetchToken();
+      void fetchToken();
     } else {
       setLoggedInUser(localStorage.getItem("chat_username") || "DevUser");
       setLoggedInEmail(localStorage.getItem("chat_email") || "dev@bim.com");
@@ -91,19 +81,42 @@ export default function Home() {
     if (activeChatId === id) setActiveChatId(null);
   };
 
-  const handleReply = (content: string) => {
-    setReplyTo(content);
-  };
+  const handleReply = (content: string) => setReplyTo(content);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || activeChatId === null) return;
-    setPendingFiles((prev) => [...prev, ...files.map((f) => f.name)]);
-    e.target.value = "";
+    const file = files[0];
+    setPendingFiles((prev) => [...prev, file.name]);
+    setIsUploading(true);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch("http://127.0.0.1:8000/upload", { method: "POST", body: formData });
+      if (!response.ok) throw new Error("Failed to upload document");
+      const data = await response.json();
+      setUploadedFilename(data.filename);
+    } catch (error) {
+      alert("Upload failed. Make sure it's a PDF or TXT.");
+      setPendingFiles((prev) => prev.filter(name => name !== file.name));
+    } finally {
+      setIsUploading(false);
+      e.target.value = "";
+    }
   };
 
   const removeFile = (index: number) => {
     setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+    setUploadedFilename("bim_data.txt");
+  };
+
+  const getCurrentHistory = () => {
+    const activeChatData = chats.find(c => c.id === activeChatId);
+    return activeChatData ? activeChatData.messages
+      .filter(msg => msg.content !== "..." && msg.content !== "")
+      .map(msg => ({ role: msg.role, content: msg.content })) : [];
   };
 
   const handleSend = async () => {
@@ -119,13 +132,8 @@ export default function Home() {
     };
 
     setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === activeChatId
-          ? {
-              ...chat,
-              title: chat.messages.length === 0 ? promptToSend.slice(0, 30) : chat.title,
-              messages: [...chat.messages, userMessage],
-            }
+      prev.map((chat) => chat.id === activeChatId
+          ? { ...chat, title: chat.messages.length === 0 ? promptToSend.slice(0, 30) : chat.title, messages: [...chat.messages, userMessage] }
           : chat
       )
     );
@@ -135,63 +143,36 @@ export default function Home() {
     setReplyTo(null);
     setIsTyping(true);
 
-    // Create an empty bot message that we will stream text into
-    const botMessage: Message = {
-      role: "assistant",
-      content: "",
-      timestamp: getTime(),
-    };
-
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === activeChatId ? { ...chat, messages: [...chat.messages, botMessage] } : chat
-      )
-    );
+    const botMessage: Message = { role: "assistant", content: "...", timestamp: getTime() };
+    setChats((prev) => prev.map((chat) => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, botMessage] } : chat));
 
     try {
       const token = localStorage.getItem("bim_token");
-
-      if (!token) {
-        alert("Please log in to use the AI!");
-        setIsTyping(false);
-        return;
-      }
+      const currentHistory = getCurrentHistory();
 
       const response = await fetch("http://127.0.0.1:8000/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ prompt: promptToSend })
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ message: promptToSend, filename: uploadedFilename, history: currentHistory, chat_id: activeChatId })
       });
 
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`API Error: ${response.status}`);
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let done = false;
-      let aiText = "";
+      const data = await response.json();
 
-      while (!done && reader) {
-        const { value, done: doneReading } = await reader.read();
-        done = doneReading;
-        const chunkValue = decoder.decode(value, { stream: true });
-        aiText += chunkValue;
-
-        setChats((prev) =>
-          prev.map((chat) => {
-            if (chat.id === activeChatId) {
-              const newMessages = [...chat.messages];
-              newMessages[newMessages.length - 1].content = aiText;
-              return { ...chat, messages: newMessages };
-            }
-            return chat;
-          })
-        );
-      }
+      setChats((prev) =>
+        prev.map((chat) => {
+          if (chat.id === activeChatId) {
+            const newMessages = [...chat.messages];
+            const targetMsg = newMessages[newMessages.length - 1];
+            targetMsg.content = data.response;
+            if (data.chart_data) (targetMsg as any).chartData = data.chart_data;
+            if (data.document_url) (targetMsg as any).documentUrl = `http://127.0.0.1:8000${data.document_url}`;
+            return { ...chat, messages: newMessages };
+          }
+          return chat;
+        })
+      );
     } catch (error) {
       setChats((prev) =>
         prev.map((chat) => {
@@ -209,70 +190,43 @@ export default function Home() {
   };
 
   const activeChat = chats.find((c) => c.id === activeChatId);
-
-  // Global Theme Classes
   const t = {
     pageBg: theme === "dark" ? (highContrast ? "bg-black" : "bg-stone-950") : (highContrast ? "bg-white" : "bg-stone-100"),
     textPrimary: theme === "dark" ? (highContrast ? "text-white" : "text-stone-100") : (highContrast ? "text-black" : "text-stone-900"),
   };
 
+  if (!mounted) return <div className="flex h-screen items-center justify-center bg-stone-950 text-white">Loading interface...</div>;
+
   return (
-    <div 
-      className={`flex h-screen overflow-hidden ${t.pageBg} ${t.textPrimary}`}
-      style={{ fontSize: `${fontSize}px`, fontFamily, lineHeight: lineSpacing }}
-    >
-      {/* Settings Modal */}
+    <div className={`flex h-screen overflow-hidden ${t.pageBg} ${t.textPrimary}`} style={{ fontSize: `${fontSize}px`, fontFamily, lineHeight: lineSpacing }}>
       {settingsOpen && (
         <SettingsModal
-          setSettingsOpen={setSettingsOpen}
-          settingsTab={settingsTab} setSettingsTab={setSettingsTab}
-          loggedInUser={loggedInUser} loggedInEmail={loggedInEmail}
-          chatCount={chats.length} handleLogout={handleLogout}
-          theme={theme} setTheme={setTheme}
-          highContrast={highContrast} setHighContrast={setHighContrast}
-          fontSize={fontSize} setFontSize={setFontSize}
-          lineSpacing={lineSpacing} setLineSpacing={setLineSpacing}
-          fontFamily={fontFamily} setFontFamily={setFontFamily}
-          accentIndex={accentIndex} setAccentIndex={setAccentIndex}
-          bubbleStyle={bubbleStyle} setBubbleStyle={setBubbleStyle}
-          messageDensity={messageDensity} setMessageDensity={setMessageDensity}
-          chatWidth={chatWidth} setChatWidth={setChatWidth}
-          sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth}
+          setSettingsOpen={setSettingsOpen} settingsTab={settingsTab} setSettingsTab={setSettingsTab}
+          loggedInUser={loggedInUser} loggedInEmail={loggedInEmail} chatCount={chats.length} handleLogout={handleLogout}
+          theme={theme} setTheme={setTheme} highContrast={highContrast} setHighContrast={setHighContrast}
+          fontSize={fontSize} setFontSize={setFontSize} lineSpacing={lineSpacing} setLineSpacing={setLineSpacing}
+          fontFamily={fontFamily} setFontFamily={setFontFamily} accentIndex={accentIndex} setAccentIndex={setAccentIndex}
+          bubbleStyle={bubbleStyle} setBubbleStyle={setBubbleStyle} messageDensity={messageDensity} setMessageDensity={setMessageDensity}
+          chatWidth={chatWidth} setChatWidth={setChatWidth} sidebarWidth={sidebarWidth} setSidebarWidth={setSidebarWidth}
         />
       )}
 
-      {/* Sidebar Navigation */}
       <Sidebar
-        sidebarOpen={sidebarOpen}
-        chats={chats}
-        activeChatId={activeChatId} setActiveChatId={setActiveChatId}
-        handleNewChat={handleNewChat} handleDeleteChat={handleDeleteChat}
-        loggedInUser={loggedInUser}
-        setSettingsOpen={setSettingsOpen} setSettingsTab={setSettingsTab}
-        theme={theme} highContrast={highContrast}
+        sidebarOpen={sidebarOpen} chats={chats} activeChatId={activeChatId} setActiveChatId={setActiveChatId}
+        handleNewChat={handleNewChat} handleDeleteChat={handleDeleteChat} loggedInUser={loggedInUser}
+        setSettingsOpen={setSettingsOpen} setSettingsTab={setSettingsTab} theme={theme} highContrast={highContrast}
         fontSize={fontSize} accentIndex={accentIndex} sidebarWidth={sidebarWidth}
       />
-      {/* Mobile Backdrop Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-30 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-      {/* Main Chat Area */}
+
+      {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}
+
       <ChatArea
-        activeChat={activeChat} handleNewChat={handleNewChat}
-        input={input} setInput={setInput}
-        pendingFiles={pendingFiles}
-        replyTo={replyTo} setReplyTo={setReplyTo}
-        isTyping={isTyping}
-        handleSend={handleSend} handleFileUpload={handleFileUpload}
-        removeFile={removeFile} handleReply={handleReply}
-        sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}
-        theme={theme} highContrast={highContrast}
-        fontSize={fontSize} fontFamily={fontFamily} lineSpacing={lineSpacing}
-        accentIndex={accentIndex} bubbleStyle={bubbleStyle}
-        messageDensity={messageDensity} chatWidth={chatWidth}
+        activeChat={activeChat} handleNewChat={handleNewChat} input={input} setInput={setInput}
+        pendingFiles={pendingFiles} replyTo={replyTo} setReplyTo={setReplyTo} isTyping={isTyping || isUploading}
+        handleSend={handleSend} handleFileUpload={handleFileUpload} removeFile={removeFile} handleReply={handleReply}
+        sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} theme={theme} highContrast={highContrast}
+        fontSize={fontSize} fontFamily={fontFamily} lineSpacing={lineSpacing} accentIndex={accentIndex}
+        bubbleStyle={bubbleStyle} messageDensity={messageDensity} chatWidth={chatWidth}
       />
     </div>
   );

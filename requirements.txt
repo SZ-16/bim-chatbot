@@ -1,10 +1,11 @@
 fastapi
 uvicorn[standard]
+python-multipart
+sqlalchemy
+psycopg2-binary
+python-dotenv
 PyJWT
 PyPDF2
-python-dotenv
-openai
-psycopg2-binary
-python-multipart
-pydantic
+requests
+python-docx
 slowapi

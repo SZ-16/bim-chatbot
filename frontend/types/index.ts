@@ -8,6 +8,10 @@ export type Message = {
   forgeModels?: ForgeModel[];
   replyTo?: string;
   citations?: { text: string; page: number }[];
+  imageUrl?: string;
+
+  chartData?: any;
+  documentUrl?: string;
 };
 
 export type Chat = {

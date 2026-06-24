@@ -24,3 +24,114 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #57534e; /* Tailwind stone-600 */
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #78716c; /* Tailwind stone-500 */
+}
+
+/* Firefox support */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #57534e transparent;
+}
+
+@layer utilities {
+  @keyframes slideUpFade {
+    0% {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-up {
+    animation: slideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+}
+
+/* Settings Background Fade */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Settings Modal Pop */
+@keyframes scalePop {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.animate-scale-pop {
+  animation: scalePop 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Settings Background Fade Out */
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Settings Modal Pop Out */
+@keyframes scalePopOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+.animate-fade-out {
+  animation: fadeOut 0.2s ease-in forwards;
+}
+
+.animate-scale-pop-out {
+  animation: scalePopOut 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Ensure all interactive elements get the pointy cursor */
+button,
+a,
+label,
+input[type="range"],
+input[type="checkbox"],
+input[type="file"],
+select {
+  cursor: pointer !important;
+}
+
+/* Ensure disabled buttons (like 'Send' while typing) don't get the pointy cursor */
+button:disabled,
+input:disabled {
+  cursor: not-allowed !important;
+}

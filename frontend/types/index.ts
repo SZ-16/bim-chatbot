@@ -4,7 +4,11 @@ export type Message = {
   timestamp: string;
   fileNames?: string[];
   replyTo?: string;
-  citations?: { text: string; page: number }[]; 
+  citations?: { text: string; page: number }[];
+  imageUrl?: string;
+
+  chartData?: any;
+  documentUrl?: string;
 };
 
 export type Chat = {

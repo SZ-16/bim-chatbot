@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main.py ai_engine.py ./
+COPY *.py ./
 COPY docs/ ./docs/
 COPY database/ ./database/
 

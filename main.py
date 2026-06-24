@@ -4,15 +4,9 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-<<<<<<< Updated upstream
-=======
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
->>>>>>> Stashed changes
 
 from auth import JWT_SECRET, ALGORITHM, verify_token
 from forge.routes import router as forge_router
-from limiter import limiter
 
 app = FastAPI()
 

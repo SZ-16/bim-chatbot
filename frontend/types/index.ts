@@ -1,8 +1,11 @@
+import type { ForgeModel } from "@/utils/forge";
+
 export type Message = {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
   fileNames?: string[];
+  forgeModels?: ForgeModel[];
   replyTo?: string;
   citations?: { text: string; page: number }[];
   imageUrl?: string;

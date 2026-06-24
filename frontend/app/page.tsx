@@ -5,6 +5,8 @@ import Sidebar from "@/components/layout/Sidebar";
 import ChatArea from "@/components/chat/ChatArea";
 import SettingsModal from "@/components/settings/SettingsModal";
 import { Chat, SettingsTab, Theme, BubbleStyle, MessageDensity, ChatWidth, SidebarWidth, Message } from "@/types";
+import { API_URL, authHeaders } from "@/utils/api";
+import { ForgeModel, isForgeFile, uploadForgeModel } from "@/utils/forge";
 
 const getTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -17,7 +19,7 @@ export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<number | null>(null);
   const [input, setInput] = useState("");
-  const [pendingFiles, setPendingFiles] = useState<string[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [uploadedFilename, setUploadedFilename] = useState<string>("bim_data.txt");
@@ -41,7 +43,8 @@ export default function Home() {
     setMounted(true);
     const fetchToken = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/login", { method: "POST" });
+        // Automatically hit your Python login endpoint
+        const res = await fetch(`${API_URL}/login`, { method: "POST" });
         if (res.ok) {
           const data = await res.json();
           localStorage.setItem("bim_token", data.access_token || "dummy_token");
@@ -86,25 +89,8 @@ export default function Home() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0 || activeChatId === null) return;
-    const file = files[0];
-    setPendingFiles((prev) => [...prev, file.name]);
-    setIsUploading(true);
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const response = await fetch("http://127.0.0.1:8000/upload", { method: "POST", body: formData });
-      if (!response.ok) throw new Error("Failed to upload document");
-      const data = await response.json();
-      setUploadedFilename(data.filename);
-    } catch (error) {
-      alert("Upload failed. Make sure it's a PDF or TXT.");
-      setPendingFiles((prev) => prev.filter(name => name !== file.name));
-    } finally {
-      setIsUploading(false);
-      e.target.value = "";
-    }
+    setPendingFiles((prev) => [...prev, ...files]);
+    e.target.value = "";
   };
 
   const removeFile = (index: number) => {
@@ -122,11 +108,34 @@ export default function Home() {
   const handleSend = async () => {
     if ((!input.trim() && pendingFiles.length === 0) || activeChatId === null) return;
 
-    const promptToSend = input || "Uploaded files for analysis.";
+    const token = localStorage.getItem("bim_token");
+    if (!token) {
+      alert("Please log in to use the AI!");
+      return;
+    }
+
+    const forgeFiles = pendingFiles.filter((file) => isForgeFile(file.name));
+    const otherFiles = pendingFiles.filter((file) => !isForgeFile(file.name));
+    const filesToUpload = [...pendingFiles];
+    const promptToSend = input || (forgeFiles.length > 0 ? "Uploaded BIM model for viewing." : "Uploaded files for analysis.");
+
+    let forgeModels: ForgeModel[] = [];
+    if (forgeFiles.length > 0) {
+      setIsTyping(true);
+      try {
+        forgeModels = await Promise.all(forgeFiles.map((file) => uploadForgeModel(file)));
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Failed to upload BIM model to Forge.");
+        setIsTyping(false);
+        return;
+      }
+    }
+
     const userMessage: Message = {
       role: "user",
       content: promptToSend,
-      fileNames: pendingFiles.length > 0 ? pendingFiles : undefined,
+      fileNames: filesToUpload.map((file) => file.name),
+      forgeModels: forgeModels.length > 0 ? forgeModels : undefined,
       timestamp: getTime(),
       replyTo: replyTo ?? undefined,
     };
@@ -141,19 +150,25 @@ export default function Home() {
     setInput("");
     setPendingFiles([]);
     setReplyTo(null);
+
+    if (forgeFiles.length > 0 && otherFiles.length === 0 && !input.trim()) {
+      setIsTyping(false);
+      return;
+    }
+
     setIsTyping(true);
 
     const botMessage: Message = { role: "assistant", content: "...", timestamp: getTime() };
     setChats((prev) => prev.map((chat) => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, botMessage] } : chat));
 
     try {
-      const token = localStorage.getItem("bim_token");
-      const currentHistory = getCurrentHistory();
-
-      const response = await fetch("http://127.0.0.1:8000/chat", {
+      const response = await fetch(`${API_URL}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ message: promptToSend, filename: uploadedFilename, history: currentHistory, chat_id: activeChatId })
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ prompt: promptToSend }),
       });
 
       if (!response.ok) throw new Error(`API Error: ${response.status}`);

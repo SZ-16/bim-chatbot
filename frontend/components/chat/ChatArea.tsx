@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ACCENT_COLORS, DENSITY_MAP, CHAT_WIDTH_MAP } from "@/utils/theme";
+import ForgeModelCard from "@/components/forge/ForgeModelCard";
 import { Chat, Theme, BubbleStyle, MessageDensity, ChatWidth } from "@/types";
 
 type ChatAreaProps = {
@@ -11,7 +12,7 @@ type ChatAreaProps = {
   handleNewChat: () => void;
   input: string;
   setInput: (val: string) => void;
-  pendingFiles: string[];
+  pendingFiles: File[];
   replyTo: string | null;
   setReplyTo: (val: string | null) => void;
   isTyping: boolean;
@@ -149,13 +150,24 @@ export default function ChatArea(props: ChatAreaProps) {
                         </a>
                       )}
                     </div>
+                  )}
 
-                    <div className="flex items-center gap-3 mt-3">
-                      <span className={t.textMuted} style={{ fontSize: `${Math.max(fontSize - 4, 10)}px` }}>{msg.timestamp}</span>
-                      <button onClick={() => { handleReply(msg.content); setTimeout(() => inputRef.current?.focus(), 0); }} className={`${t.textMuted} hover:${t.textPrimary} transition-colors`} style={{ fontSize: `${Math.max(fontSize - 2, 10)}px` }} title="Reply">↩ Reply</button>
+                  {msg.forgeModels && msg.forgeModels.length > 0 && (
+                    <div className="mb-2 space-y-3">
+                      {msg.forgeModels.map((model) => (
+                        <ForgeModelCard key={model.urn} model={model} />
+                      ))}
                     </div>
-                  </div>
-                )}
+                  )}
+                  
+                  {msg.content}
+                </div>
+                
+                {/* Timestamp & Actions */}
+                <div className="flex items-center gap-2 mt-1 px-1">
+                  <span className={t.textMuted} style={{ fontSize: `${Math.max(fontSize - 2, 10)}px` }}>{msg.timestamp}</span>
+                  <button onClick={() => { handleReply(msg.content); setTimeout(() => inputRef.current?.focus(), 0); }} className={`${t.textMuted} hover:${t.textPrimary} transition-colors`} style={{ fontSize: `${Math.max(fontSize - 2, 10)}px` }} title="Reply">↩</button>
+                </div>
               </div>
             ))}
 
@@ -181,9 +193,9 @@ export default function ChatArea(props: ChatAreaProps) {
 
             {pendingFiles.length > 0 && (
               <div className="flex flex-wrap gap-2">
-                {pendingFiles.map((name, i) => (
+                {pendingFiles.map((file, i) => (
                   <div key={i} className={`flex items-center gap-2 ${t.inputBg} border ${t.borderMid} rounded-xl px-3 py-1 ${t.textSecondary}`}>
-                    <span>📎 {name}</span>
+                    <span>📎 {file.name}</span>
                     <button onClick={() => removeFile(i)} className={`${t.textMuted} hover:text-red-400`} style={{ fontSize: `${Math.max(fontSize - 2, 10)}px` }}>✕</button>
                   </div>
                 ))}

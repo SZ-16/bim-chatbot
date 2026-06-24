@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -32,7 +32,6 @@ type ChatAreaProps = {
   chatWidth: ChatWidth;
 };
 
-// Helper to render beautiful interactive Recharts
 const InteractiveChart = ({ chartData, theme, highContrast }: { chartData: any, theme: string, highContrast: boolean }) => {
   if (!chartData || !chartData.labels || !chartData.values) return null;
 
@@ -68,6 +67,32 @@ const InteractiveChart = ({ chartData, theme, highContrast }: { chartData: any, 
   );
 };
 
+const TypewriterEffect = ({ text, animate }: { text: string; animate: boolean }) => {
+  const [displayedText, setDisplayedText] = useState(animate ? "" : text);
+
+  useEffect(() => {
+    if (!animate) {
+      setDisplayedText(text);
+      return;
+    }
+
+    let i = 0;
+    const timer = setInterval(() => {
+      i += 3; // Number of characters to reveal per tick
+      setDisplayedText(text.slice(0, i));
+      if (i >= text.length) clearInterval(timer);
+    }, 15);
+
+    return () => clearInterval(timer);
+  }, [text, animate]);
+
+  return (
+      <ReactMarkdown remarkPlugins={[remarkGfm as any]}>
+        {displayedText}
+      </ReactMarkdown>
+  );
+};
+
 export default function ChatArea(props: ChatAreaProps) {
   const {
     activeChat, handleNewChat, input, setInput, pendingFiles, replyTo, setReplyTo, isTyping,
@@ -76,7 +101,7 @@ export default function ChatArea(props: ChatAreaProps) {
   } = props;
 
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const accent = ACCENT_COLORS[accentIndex];
   const density = DENSITY_MAP[messageDensity];
@@ -97,15 +122,16 @@ export default function ChatArea(props: ChatAreaProps) {
 
   return (
     <div className="flex-1 flex flex-col items-center min-w-0">
-      <div className={`w-full flex items-center px-4 py-3 border-b ${t.border}`}>
-        <button onClick={() => setSidebarOpen((prev) => !prev)} className={`${t.textMuted} hover:${accent.text} transition-colors text-xl mr-3`}>☰</button>
-        {!sidebarOpen && <span className={`${accent.text} font-semibold`}>BIM Chatbot</span>}
-      </div>
+      {!sidebarOpen && (
+          <div className={`w-full flex items-center px-4 py-3 border-b ${t.border}`}>
+            <button onClick={() => setSidebarOpen(true)} className={`${t.textMuted} hover:${accent.text} transition-colors text-xl mr-3`}>☰</button>
+            <span className={`${accent.text} font-semibold`}>BIM Chatbot</span>
+          </div>
+      )}
 
       {!activeChat ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-6 px-4">
           <div className="text-center space-y-3">
-            <div className="text-6xl mb-2">🏗️</div>
             <h2 className={`text-4xl font-bold ${accent.text}`}>Welcome to BIM Chatbot</h2>
             <p className={t.textMuted}>Your AI assistant for BIM documentation.</p>
           </div>
@@ -117,16 +143,20 @@ export default function ChatArea(props: ChatAreaProps) {
             {activeChat.messages.length === 0 && !isTyping && <p className={`text-center ${t.textMuted} mt-20`}>Ask me anything about your BIM documents.</p>}
 
             {activeChat.messages.map((msg: any, i: number) => (
-              <div key={i} className={`flex w-full mb-8 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div key={`${msg.timestamp}-${i}`} className={`flex w-full mb-8 animate-slide-up ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
 
                 {msg.role === "user" ? (
-                  <div className="flex flex-col items-end max-w-2xl">
+                    <div className="flex flex-col items-end max-w-[85%] md:max-w-xl">
                     {msg.replyTo && (
                       <div className={`max-w-lg ${density.px} py-2 rounded-xl ${t.textMuted} ${t.inputBg} border-l-2 ${accent.border} mb-1 truncate self-end`} style={{ fontSize: `${Math.max(fontSize - 2, 10)}px` }}>
                         ↩ {msg.replyTo}
                       </div>
                     )}
-                    <div className={`px-5 py-3 rounded-2xl ${accent.bg} text-stone-950 font-medium`}>
+                    <div className={`
+                      ${bubbleStyle === "square" ? "rounded-md" : "rounded-2xl"} 
+                      ${messageDensity === "compact" ? "px-4 py-2 text-sm" : messageDensity === "spacious" ? "px-6 py-4" : "px-5 py-3"} 
+                      ${accent.bg} text-stone-950 font-medium break-all max-w-full
+                    `}>
                       {msg.content}
                     </div>
                     <span className={`mt-1 ${t.textMuted}`} style={{ fontSize: `${Math.max(fontSize - 4, 10)}px` }}>{msg.timestamp}</span>
@@ -136,17 +166,18 @@ export default function ChatArea(props: ChatAreaProps) {
                     <div className="w-full text-stone-900 dark:text-stone-100">
 
                       <div className="prose prose-stone dark:prose-invert max-w-none w-full leading-relaxed prose-p:mb-4 prose-p:mt-0 prose-ul:my-4 prose-li:my-1 whitespace-normal">
-                        <ReactMarkdown remarkPlugins={[remarkGfm as any]}>
-                          {msg.content}
-                        </ReactMarkdown>
+                        <TypewriterEffect
+                            text={msg.content}
+                            animate={i === activeChat.messages.length - 1}
+                        />
                       </div>
 
                       {msg.chartData && <InteractiveChart chartData={msg.chartData} theme={theme} highContrast={highContrast} />}
 
                       {msg.documentUrl && (
-                        <a href={msg.documentUrl} download className={`mt-6 inline-flex items-center gap-2 ${accent.bg} ${accent.hover} text-stone-900 font-bold px-5 py-3 rounded-xl transition-transform hover:scale-[1.02] shadow-sm`}>
-                          📄 Download Generated Report
-                        </a>
+                          <a href={msg.documentUrl} download className={`mt-6 inline-flex items-center gap-2 ${accent.bg} ${accent.hover} text-stone-900 font-bold px-5 py-3 rounded-xl transition-transform hover:scale-[1.02] shadow-sm`}>
+                            Download Generated Report
+                          </a>
                       )}
                     </div>
 
@@ -160,13 +191,13 @@ export default function ChatArea(props: ChatAreaProps) {
             ))}
 
             {isTyping && (
-              <div className="flex items-start">
-                <div className={`${t.bubbleBot} px-4 py-3 rounded-2xl flex gap-1 items-center border ${t.border}`}>
-                  <span className={`w-2 h-2 ${accent.bg} rounded-full animate-bounce`} style={{ animationDelay: "0ms" }} />
-                  <span className={`w-2 h-2 ${accent.bg} rounded-full animate-bounce`} style={{ animationDelay: "150ms" }} />
-                  <span className={`w-2 h-2 ${accent.bg} rounded-full animate-bounce`} style={{ animationDelay: "300ms" }} />
+                <div className="flex items-start animate-slide-up">
+                  <div className="px-2 py-3 flex gap-1.5 items-center">
+                    <span className={`w-2 h-2 ${accent.bg} rounded-full animate-bounce`} style={{ animationDelay: "0ms" }} />
+                    <span className={`w-2 h-2 ${accent.bg} rounded-full animate-bounce`} style={{ animationDelay: "150ms" }} />
+                    <span className={`w-2 h-2 ${accent.bg} rounded-full animate-bounce`} style={{ animationDelay: "300ms" }} />
+                  </div>
                 </div>
-              </div>
             )}
             <div ref={bottomRef} />
           </div>
@@ -183,7 +214,7 @@ export default function ChatArea(props: ChatAreaProps) {
               <div className="flex flex-wrap gap-2">
                 {pendingFiles.map((name, i) => (
                   <div key={i} className={`flex items-center gap-2 ${t.inputBg} border ${t.borderMid} rounded-xl px-3 py-1 ${t.textSecondary}`}>
-                    <span>📎 {name}</span>
+                    <span> {name}</span>
                     <button onClick={() => removeFile(i)} className={`${t.textMuted} hover:text-red-400`} style={{ fontSize: `${Math.max(fontSize - 2, 10)}px` }}>✕</button>
                   </div>
                 ))}
@@ -191,19 +222,24 @@ export default function ChatArea(props: ChatAreaProps) {
             )}
 
             <div className="flex gap-2 items-center">
-              <label className={`cursor-pointer ${t.inputBg} ${t.textMuted} hover:${t.textPrimary} px-3 py-3 rounded-xl font-medium transition-colors border ${t.borderMid}`}>
-                📎
+              <label className={`cursor-pointer ${t.inputBg} ${t.textMuted} hover:${t.textPrimary} px-4 py-3 rounded-xl text-sm font-medium transition-colors border ${t.borderMid}`}>
+                Attach
                 <input type="file" multiple accept=".pdf,.txt" className="hidden" onChange={(e) => { handleFileUpload(e); setTimeout(() => inputRef.current?.focus(), 0); }} />
               </label>
 
-              <input
-                ref={inputRef}
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                placeholder={replyTo ? "Type your reply..." : "Message or ask for a chart / document..."}
-                className={`flex-1 ${t.inputBg} ${t.textPrimary} rounded-xl px-4 py-3 outline-none border ${t.borderMid} focus:${accent.border} transition-colors`}
+              <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  rows={1}
+                  placeholder={replyTo ? "Type your reply..." : "Ask BIM Chatbot"}
+                  className={`flex-1 resize-none ${t.inputBg} ${t.textPrimary} rounded-xl px-4 py-3 outline-none border ${t.borderMid} focus:${accent.border} transition-colors min-h-[48px] max-h-[120px] overflow-y-auto`}
               />
 
               <button onClick={handleSend} disabled={isTyping} className={`${accent.bg} ${accent.hover} text-stone-950 px-6 py-3 rounded-xl font-bold disabled:opacity-50 transition-colors`}>

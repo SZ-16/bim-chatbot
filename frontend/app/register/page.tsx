@@ -36,7 +36,7 @@ export default function RegisterPage() {
         
         {/* Header */}
         <div className="text-center space-y-2">
-          <div className="text-5xl">🏗️</div>
+          <div className="text-5xl"> </div>
           <h1 className="text-3xl font-bold text-amber-400">BIM Chatbot</h1>
           <p className="text-stone-400 text-sm">Create a new account</p>
         </div>

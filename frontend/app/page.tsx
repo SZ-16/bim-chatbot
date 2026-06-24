@@ -26,7 +26,7 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("profile");
-  const [fontSize, setFontSize] = useState(14);
+  const [fontSize, setFontSize] = useState(18);
   const [fontFamily, setFontFamily] = useState("Inter, sans-serif");
   const [theme, setTheme] = useState<Theme>("dark");
   const [highContrast, setHighContrast] = useState(false);
@@ -39,6 +39,9 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true);
+    if (window.innerWidth < 768) {
+      setFontSize(15);
+    }
     const fetchToken = async () => {
       try {
         const res = await fetch("http://127.0.0.1:8000/login", { method: "POST" });
@@ -143,9 +146,6 @@ export default function Home() {
     setReplyTo(null);
     setIsTyping(true);
 
-    const botMessage: Message = { role: "assistant", content: "...", timestamp: getTime() };
-    setChats((prev) => prev.map((chat) => chat.id === activeChatId ? { ...chat, messages: [...chat.messages, botMessage] } : chat));
-
     try {
       const token = localStorage.getItem("bim_token");
       const currentHistory = getCurrentHistory();
@@ -161,31 +161,38 @@ export default function Home() {
       const data = await response.json();
 
       setChats((prev) =>
-        prev.map((chat) => {
-          if (chat.id === activeChatId) {
-            const newMessages = [...chat.messages];
-            const targetMsg = newMessages[newMessages.length - 1];
-            targetMsg.content = data.response;
-            if (data.chart_data) (targetMsg as any).chartData = data.chart_data;
-            if (data.document_url) (targetMsg as any).documentUrl = `http://127.0.0.1:8000${data.document_url}`;
-            return { ...chat, messages: newMessages };
-          }
-          return chat;
-        })
+          prev.map((chat) => {
+            if (chat.id === activeChatId) {
+              const newBotMessage: Message = {
+                role: "assistant",
+                content: data.response,
+                timestamp: getTime()
+              };
+
+              if (data.chart_data) (newBotMessage as any).chartData = data.chart_data;
+              if (data.document_url) (newBotMessage as any).documentUrl = `http://127.0.0.1:8000${data.document_url}`;
+
+              return { ...chat, messages: [...chat.messages, newBotMessage] };
+            }
+            return chat;
+          })
       );
     } catch (error) {
       setChats((prev) =>
-        prev.map((chat) => {
-          if (chat.id === activeChatId) {
-            const newMessages = [...chat.messages];
-            newMessages[newMessages.length - 1].content = "Connection Error.";
-            return { ...chat, messages: newMessages };
-          }
-          return chat;
-        })
+          prev.map((chat) => {
+            if (chat.id === activeChatId) {
+              const errorMsg: Message = {
+                role: "assistant",
+                content: "Connection Error.",
+                timestamp: getTime()
+              };
+              return { ...chat, messages: [...chat.messages, errorMsg] };
+            }
+            return chat;
+          })
       );
     } finally {
-      setIsTyping(false);
+      setIsTyping(false); // This cleanly hides the animated bouncing dots
     }
   };
 
@@ -212,10 +219,10 @@ export default function Home() {
       )}
 
       <Sidebar
-        sidebarOpen={sidebarOpen} chats={chats} activeChatId={activeChatId} setActiveChatId={setActiveChatId}
-        handleNewChat={handleNewChat} handleDeleteChat={handleDeleteChat} loggedInUser={loggedInUser}
-        setSettingsOpen={setSettingsOpen} setSettingsTab={setSettingsTab} theme={theme} highContrast={highContrast}
-        fontSize={fontSize} accentIndex={accentIndex} sidebarWidth={sidebarWidth}
+          sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} chats={chats} activeChatId={activeChatId} setActiveChatId={setActiveChatId}
+          handleNewChat={handleNewChat} handleDeleteChat={handleDeleteChat} loggedInUser={loggedInUser}
+          setSettingsOpen={setSettingsOpen} setSettingsTab={setSettingsTab} theme={theme} highContrast={highContrast}
+          fontSize={fontSize} accentIndex={accentIndex} sidebarWidth={sidebarWidth}
       />
 
       {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setSidebarOpen(false)} />}

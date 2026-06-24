@@ -35,36 +35,38 @@ def load_document_context(file_path="bim_data.txt"):
 
 # 2. The Memory-Enabled AI Logic
 def ask_laguna(question: str, file_path: str = "bim_data.txt", history: list = None):
-    # Ensure history is an empty list if nothing is passed
     if history is None:
         history = []
 
     api_key = os.getenv("OPENROUTER_API_KEY")
     url = "https://openrouter.ai/api/v1/chat/completions"
 
-    # Grab the context from the PDF
     document_context = load_document_context(file_path)
 
-    # THE FIX: Relaxed System Prompt allowing it to answer questions about the chat!
     system_instruction = """
-    You are an expert Technical Evaluator and Data Analyst.
-    You have access to both the uploaded document (CONTEXT) and the recent conversation history.
+    You are an intelligent assistant for a BIM (Building Information Modeling) platform.
 
-    1. If the user asks a technical question, answer using ONLY the provided CONTEXT. Extract exact numerical data where possible.
-    2. If the user asks about the conversation itself (e.g., "what did I ask earlier?", "repeat that"), use the conversation history to answer them directly.
-    3. If the answer cannot be found in either the context or the history, say 'I cannot find this in the current documentation.'
+    CRITICAL FORMATTING RULE: 
+    Write in continuous, well-structured paragraphs. Do NOT use single line breaks. Let sentences wrap naturally. Use markdown bullet points ONLY when listing specific items.
+
+    CRITICAL INSTRUCTIONS FOR INTENT DETECTION:
+    1. CHARTS: If the user explicitly asks for a chart, graph, or visual data representation, you MUST include a JSON block enclosed in <chart> tags anywhere in your response. 
+       Example: <chart>{"type": "bar", "title": "LOD Distribution", "labels": ["LOD 200", "LOD 300"], "values": [150, 350]}</chart>
+       Supported types: "bar", "pie".
+    2. DOCUMENTS: If the user explicitly asks to generate a report, document, or export data, you MUST wrap the complete, formal report text in <document> tags.
+       Example: <document># Site Report\n\nEverything looks good...</document>
+
+    General Rules:
+    - Prioritize answering using the provided CONTEXT.
+    - If the user asks about the conversation itself, use the conversation history.
     """
 
-    # Start building the JSON package with the system rules
     messages_payload = [{"role": "system", "content": system_instruction}]
 
-    # THE FIX: Inject the last 10 messages of the conversation history
     for msg in history[-10:]:
-        # Ignore empty messages or the "..." loading bubble
         if msg.get("content", "").strip() and msg.get("content") != "...":
             messages_payload.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
 
-    # Finally, inject the brand new question wrapped in the PDF context
     full_prompt = f"CONTEXT:\n{document_context}\n\nUSER QUESTION: {question}"
     messages_payload.append({"role": "user", "content": full_prompt})
 

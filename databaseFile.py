@@ -9,7 +9,12 @@ load_dotenv()
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Create the engine that talks to Neon DB
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+# UPDATED: Added pool_pre_ping and pool_recycle for Neon's serverless connections
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_pre_ping=True,  # Verifies connection is still alive before querying
+    pool_recycle=300     # Refreshes idle connections every 5 minutes
+)
 
 # Create a session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

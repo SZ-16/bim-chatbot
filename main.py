@@ -1,43 +1,52 @@
 import os
-<<<<<<< Updated upstream
+import io
+import json
+import uuid
+import shutil
 import jwt
+import re
 from datetime import datetime, timedelta, timezone
-from PyPDF2 import PdfReader
+from typing import List, Optional
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Request
 from fastapi.security import OAuth2PasswordBearer
-from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-=======
-import shutil
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
-from sqlalchemy.orm import Session
->>>>>>> Stashed changes
+
+from docx import Document
 
 # Import Database tools
 from databaseFile import engine, Base, get_db
 import models
 
-# Import your upgraded AI engine
+# Import your AI engine
 from ai_engine import ask_laguna
 
-<<<<<<< Updated upstream
+JWT_SECRET = os.getenv("JWT_SECRET", "change_this_secret")
+ALGORITHM = "HS256"
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+
+def verify_token(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
+        return payload.get("sub")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
 limiter = Limiter(key_func=get_remote_address)
-=======
-# 1. Initialize FastAPI & Database Tables
+
 Base.metadata.create_all(bind=engine)
->>>>>>> Stashed changes
 app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# 2. Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,12 +55,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 3. Create the Uploads Directory
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-# 4. Data Models for the API
 class ChatMessageDef(BaseModel):
     role: str
     content: str
@@ -61,94 +68,127 @@ class ChatRequest(BaseModel):
     message: str
     filename: str = "bim_data.txt"
     history: List[ChatMessageDef] = []
-    chat_id: Optional[int] = None  # Allows frontend to specify which chat this belongs to
+    chat_id: Optional[int] = None
 
 
-# --- ROUTES ---
+class CommentRequest(BaseModel):
+    chat_id: int
+    author: str
+    content: str
 
-@app.get("/login")
-async def auto_login():
-    return {"token": "your_secure_jwt_token_here"}
+
+@app.post("/login")
+@limiter.limit("10/minute")
+def login_placeholder(request: Request):
+    expiration_time = datetime.now(timezone.utc) + timedelta(hours=24)
+    token_data = {"sub": "test_engineer", "exp": expiration_time}
+    encoded_jwt = jwt.encode(token_data, JWT_SECRET, algorithm=ALGORITHM)
+    return {"access_token": encoded_jwt, "token_type": "bearer"}
 
 
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
     if not file.filename.endswith(('.pdf', '.txt')):
         raise HTTPException(status_code=400, detail="Only .pdf and .txt files are allowed.")
-
     file_location = os.path.join(UPLOAD_DIR, file.filename)
-
     with open(file_location, "wb+") as file_object:
         shutil.copyfileobj(file.file, file_object)
+    return {"message": "Success", "filename": file.filename, "path": file_location}
 
-<<<<<<< Updated upstream
-@app.post("/login")
-@limiter.limit("10/minute")
-def login_placeholder(request: Request):
-    expiration_time = datetime.now(timezone.utc) + timedelta(hours=24)
 
-    # JWT
-    token_data = {"sub": "test_engineer", "exp": expiration_time}
-    encoded_jwt = jwt.encode(token_data, JWT_SECRET, algorithm=ALGORITHM)
+@app.get("/documents")
+async def list_documents():
+    files = [f for f in os.listdir(UPLOAD_DIR) if f.endswith(('.pdf', '.txt'))]
+    return {"documents": files}
 
-    return {"access_token": encoded_jwt, "token_type": "bearer"}
+
+@app.get("/download/{filename}")
+async def download_file(filename: str):
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    if os.path.exists(filepath):
+        return FileResponse(filepath, filename=filename)
+    raise HTTPException(status_code=404, detail="File not found")
 
 
 @app.post("/chat")
 @limiter.limit("20/minute")
-async def chat_endpoint(
-    request: Request,
-    chat_request: ChatRequest,
-    user: str = Depends(verify_token),
-):
-    if not chat_request.prompt.strip():
-        raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
-=======
-    return {"message": "Success", "filename": file.filename, "path": file_location}
+async def chat_endpoint(request: Request, chat_request: ChatRequest, db: Session = Depends(get_db)):
+    if not chat_request.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
-
-@app.post("/chat")
-async def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
-    current_chat_id = request.chat_id
->>>>>>> Stashed changes
-
-    # 1. Check if React's specific chat ID already exists in Neon DB
+    current_chat_id = chat_request.chat_id
     chat_record = db.query(models.Chat).filter(models.Chat.id == current_chat_id).first()
 
-<<<<<<< Updated upstream
-    return StreamingResponse(
-        stream_laguna(chat_request.prompt),
-        media_type="text/event-stream"
-    )
-=======
-    # 2. If it does not exist, create the Chat first!
     if not chat_record:
-        new_chat = models.Chat(id=current_chat_id, title=request.message[:30])
+        new_chat = models.Chat(id=current_chat_id, title=chat_request.message[:30])
         db.add(new_chat)
         db.commit()
->>>>>>> Stashed changes
 
-    # 3. Save the User's Message to Neon DB safely
-    user_msg = models.Message(chat_id=current_chat_id, role="user", content=request.message)
+    user_msg = models.Message(chat_id=current_chat_id, role="user", content=chat_request.message)
     db.add(user_msg)
     db.commit()
 
-    # 4. Handle File Path
-    if request.filename != "bim_data.txt":
-        file_path = os.path.join(UPLOAD_DIR, request.filename)
-    else:
-        file_path = "bim_data.txt"
+    file_path = os.path.join(UPLOAD_DIR,
+                             chat_request.filename) if chat_request.filename != "bim_data.txt" else "bim_data.txt"
+    dict_history = [{"role": msg.role, "content": msg.content} for msg in chat_request.history]
 
-    # 5. Ask the AI (passing the history so it remembers)
-    dict_history = [{"role": msg.role, "content": msg.content} for msg in request.history]
-    ai_response = ask_laguna(request.message, file_path, dict_history)
+    # 1. Fetch AI Response
+    ai_response = ask_laguna(chat_request.message, file_path, dict_history)
 
-    # 6. Save the AI's Response to Neon DB
+    chart_data = None
+    document_filename = None
+
+    # 2. Extract Intent: Chart
+    chart_match = re.search(r'<chart>(.*?)</chart>', ai_response, re.DOTALL)
+    if chart_match:
+        try:
+            chart_data = json.loads(chart_match.group(1))
+            ai_response = re.sub(r'<chart>.*?</chart>', '', ai_response, flags=re.DOTALL).strip()
+        except Exception:
+            pass
+
+    # 3. Extract Intent: Document Generation
+    doc_match = re.search(r'<document>(.*?)</document>', ai_response, re.DOTALL)
+    if doc_match:
+        doc_content = doc_match.group(1)
+        ai_response = re.sub(r'<document>.*?</document>', '', ai_response, flags=re.DOTALL).strip()
+
+        doc = Document()
+        doc.add_heading("BIM Generated Report", level=1)
+        for paragraph in doc_content.split("\n"):
+            if paragraph.strip():
+                doc.add_paragraph(paragraph)
+
+        filename = f"report_{uuid.uuid4().hex[:8]}.docx"
+        filepath = os.path.join(UPLOAD_DIR, filename)
+        doc.save(filepath)
+        document_filename = filename
+
+    # Fallback if empty
+    if not ai_response.strip():
+        ai_response = "Here is the generated output based on your request:"
+
     ai_msg = models.Message(chat_id=current_chat_id, role="assistant", content=ai_response)
     db.add(ai_msg)
     db.commit()
 
     return {
         "response": ai_response,
-        "chat_id": current_chat_id
+        "chat_id": current_chat_id,
+        "chart_data": chart_data,
+        "document_url": f"/download/{document_filename}" if document_filename else None
     }
+
+
+@app.post("/comments")
+async def add_comment(req: CommentRequest, db: Session = Depends(get_db)):
+    comment = models.Comment(chat_id=req.chat_id, author=req.author, content=req.content)
+    db.add(comment)
+    db.commit()
+    return {"status": "added"}
+
+
+@app.get("/comments/{chat_id}")
+async def get_comments(chat_id: int, db: Session = Depends(get_db)):
+    comments = db.query(models.Comment).filter(models.Comment.chat_id == chat_id).all()
+    return [{"author": c.author, "content": c.content, "created_at": c.created_at} for c in comments]
